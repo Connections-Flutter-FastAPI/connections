@@ -1,0 +1,2 @@
+. bin/activate && uvicorn main:app --reload --host 100.97.215.85
+
