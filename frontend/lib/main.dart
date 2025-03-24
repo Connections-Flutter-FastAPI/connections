@@ -1,8 +1,7 @@
-// main.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'screens/login_screen.dart';
-import 'screens/signup_screen.dart'; // Import your existing SignupScreen
+import 'screens/signup_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/auth_provider.dart';
 import 'services/api_service.dart';
@@ -26,7 +25,7 @@ void main() {
 class ThemeNotifier with ChangeNotifier {
   ThemeData _themeData;
 
-  ThemeNotifier() : _themeData = lightTheme();
+  ThemeNotifier() : _themeData = darkTheme(); // Start with dark theme by default like Discord
 
   ThemeData getTheme() => _themeData;
 
@@ -35,10 +34,12 @@ class ThemeNotifier with ChangeNotifier {
     notifyListeners();
   }
 
-    void toggleTheme() {
-     _themeData = (_themeData == lightTheme()) ? darkTheme() : lightTheme();
-      notifyListeners();
+  void toggleTheme() {
+    _themeData = (_themeData == lightTheme()) ? darkTheme() : lightTheme();
+    notifyListeners();
   }
+
+  bool get isDarkMode => _themeData == darkTheme();
 }
 
 class MyApp extends StatelessWidget {
@@ -47,15 +48,15 @@ class MyApp extends StatelessWidget {
     return Consumer<ThemeNotifier>(
       builder: (context, themeNotifier, child) {
         return MaterialApp(
-          title: 'FastAPI Flutter App',
+          title: 'Connect - Social Network',
           theme: themeNotifier.getTheme(),
-          initialRoute: '/', // Set initial route
+          initialRoute: '/',
           routes: {
-            '/': (context) => const LoginScreen(),  // Start with Login
+            '/': (context) => const LoginScreen(),
             '/signup': (context) => const SignUpScreen(),
-            '/home': (context) =>  HomeScreen(),
+            '/home': (context) => HomeScreen(),
           },
-          debugShowCheckedModeBanner: false,
+          debugShowCheckedModeBanner: false, // Remove debug banner
         );
       },
     );
