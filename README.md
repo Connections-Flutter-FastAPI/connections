@@ -4,6 +4,20 @@
 ## **Project Overview**  
 Connections is a modern social platform built using **FastAPI** for the backend and **Flutter** for the frontend. This guide will help you set up the project in a **GitHub Codespace** or your local machine.  
 
+Setting Up Connections Project
+Identify Tech Stack
+Choose Setup Environment
+Clone Repository
+Install Dependencies
+Setup PostgreSQL
+Start FastAPI Backend
+Determine the technologies used for the project
+Decide between GitHub Codespace or local machine
+Download the project's codebase from GitHub
+Install necessary libraries and packages
+Configure the database for the project
+Launch the backend server to handle requests![image](https://github.com/user-attachments/assets/f01113aa-41c3-4748-80de-5755cf380c2a)
+
 ---
 
 ## **Tech Stack**  
