@@ -115,6 +115,12 @@ Your Flutter frontend should now be accessible in the browser at: **http://127.0
 - Open **http://127.0.0.1:8000/docs** to check FastAPI's auto-generated API documentation.  
 - Use the frontend at **http://localhost:9339** (or the provided URL from `flutter run`).  
 
+FastAPI Documentation Access
+Access the API documentation through a web link.
+Test Backend
+Access the frontend application via the specified URL.
+Use Frontend![image](https://github.com/user-attachments/assets/0ca75457-c891-40dc-a4d2-767c355f2c7e)
+
 ---
 
 ## **🤝 Contributing**  
