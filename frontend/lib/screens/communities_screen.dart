@@ -9,6 +9,7 @@ import '../widgets/custom_card.dart';
 import '../widgets/custom_button.dart';
 import '../theme/theme_constants.dart';
 import 'create_community_screen.dart';
+import 'community_detail_screen.dart';
 
 class CommunitiesScreen extends StatefulWidget {
   const CommunitiesScreen({Key? key}) : super(key: key);
@@ -88,6 +89,27 @@ class _CommunitiesScreenState extends State<CommunitiesScreen> with AutomaticKee
       _triggerCommunityLoad(); // Reload data for the new category/filter
     }
   }
+
+   void _navigateToCommunityDetail(Map<String, dynamic> communityData, bool isJoined) {
+      Navigator.of(context).push(
+        PageRouteBuilder(
+          opaque: false, // Make the route background transparent
+          barrierDismissible: true, // Allow dismissing by tapping outside
+          barrierColor: Colors.black.withOpacity(0.6), // Dimming overlay color
+          pageBuilder: (context, animation, secondaryAnimation) {
+            return FadeTransition( // Optional: Add fade transition
+              opacity: animation,
+              child: CommunityDetailScreen(
+                community: communityData,
+                initialIsJoined: isJoined,
+                onToggleJoin: _toggleJoinCommunity, // Pass the toggle function
+              ),
+            );
+          },
+        ),
+      );
+  }
+
 
   void _navigateToCreateCommunity() async {
     if (!mounted) return;
@@ -309,6 +331,7 @@ class _CommunitiesScreenState extends State<CommunitiesScreen> with AutomaticKee
                         onJoin: () => _toggleJoinCommunity(communityId, isJoined),
                         onTap: () {
                           // TODO: Implement navigation to community detail screen
+                          _navigateToCommunityDetail(community, isJoined);
                           print("Tapped community: ${community['name']}");
                           // Example: Navigator.push(context, MaterialPageRoute(builder: (_) => CommunityDetailScreen(communityId: communityId)));
                         },
