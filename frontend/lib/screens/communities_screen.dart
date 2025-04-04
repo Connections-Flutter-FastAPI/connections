@@ -9,6 +9,7 @@ import '../widgets/custom_card.dart';
 import '../widgets/custom_button.dart';
 import '../theme/theme_constants.dart';
 import 'create_community_screen.dart';
+import 'community_detail_screen.dart';
 
 class CommunitiesScreen extends StatefulWidget {
   const CommunitiesScreen({Key? key}) : super(key: key);
@@ -29,13 +30,18 @@ class _CommunitiesScreenState extends State<CommunitiesScreen> with AutomaticKee
 
   // Keep static category tabs
   final List<Map<String, dynamic>> _categoryTabs = [
-    {'id': 'all', 'label': 'All', 'icon': Icons.public},
-    {'id': 'trending', 'label': 'Trending', 'icon': Icons.trending_up},
-    {'id': 'gaming', 'label': 'Gaming', 'icon': Icons.sports_esports},
-    {'id': 'tech', 'label': 'Tech', 'icon': Icons.code},
-    {'id': 'music', 'label': 'Music', 'icon': Icons.music_note},
-    {'id': 'art', 'label': 'Art', 'icon': Icons.palette},
-  ];
+  {'id': 'all', 'label': 'All', 'icon': Icons.public},
+  {'id': 'trending', 'label': 'Trending', 'icon': Icons.trending_up},
+  {'id': 'gaming', 'label': 'Gaming', 'icon': Icons.sports_esports},
+  {'id': 'tech', 'label': 'Tech', 'icon': Icons.code},
+  {'id': 'science', 'label': 'Science', 'icon': Icons.science},
+  {'id': 'music', 'label': 'Music', 'icon': Icons.music_note},
+  {'id': 'sports', 'label': 'Sports', 'icon': Icons.sports},
+  {'id': 'college_events', 'label': 'College Events', 'icon': Icons.school},
+  {'id': 'activities', 'label': 'Activities', 'icon': Icons.hiking},
+  {'id': 'social', 'label': 'Social', 'icon': Icons.people},
+  {'id': 'other', 'label': 'Other', 'icon': Icons.more_horiz},
+];
 
   @override
   void initState() {
@@ -83,6 +89,27 @@ class _CommunitiesScreenState extends State<CommunitiesScreen> with AutomaticKee
       _triggerCommunityLoad(); // Reload data for the new category/filter
     }
   }
+
+   void _navigateToCommunityDetail(Map<String, dynamic> communityData, bool isJoined) {
+      Navigator.of(context).push(
+        PageRouteBuilder(
+          opaque: false, // Make the route background transparent
+          barrierDismissible: true, // Allow dismissing by tapping outside
+          barrierColor: Colors.black.withOpacity(0.6), // Dimming overlay color
+          pageBuilder: (context, animation, secondaryAnimation) {
+            return FadeTransition( // Optional: Add fade transition
+              opacity: animation,
+              child: CommunityDetailScreen(
+                community: communityData,
+                initialIsJoined: isJoined,
+                onToggleJoin: _toggleJoinCommunity, // Pass the toggle function
+              ),
+            );
+          },
+        ),
+      );
+  }
+
 
   void _navigateToCreateCommunity() async {
     if (!mounted) return;
@@ -304,6 +331,7 @@ class _CommunitiesScreenState extends State<CommunitiesScreen> with AutomaticKee
                         onJoin: () => _toggleJoinCommunity(communityId, isJoined),
                         onTap: () {
                           // TODO: Implement navigation to community detail screen
+                          _navigateToCommunityDetail(community, isJoined);
                           print("Tapped community: ${community['name']}");
                           // Example: Navigator.push(context, MaterialPageRoute(builder: (_) => CommunityDetailScreen(communityId: communityId)));
                         },

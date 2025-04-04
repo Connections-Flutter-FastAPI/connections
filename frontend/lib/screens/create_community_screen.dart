@@ -1,4 +1,3 @@
-// screens/create_community_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
@@ -16,15 +15,28 @@ class _CreateCommunityScreenState extends State<CreateCommunityScreen> {
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _locationController = TextEditingController();
-  final _interestController = TextEditingController(); // Added controller for interest
+  
   bool _isLoading = false;
+  String? _selectedInterest; // Stores selected interest
+
+  // List of allowed interests (from database)
+  final List<String> _interests = [
+    "Gaming",
+    "Tech",
+    "Science",
+    "Music",
+    "Sports",
+    "College Event",
+    "Activities",
+    "Social",
+    "Other"
+  ];
 
   @override
   void dispose() {
     _nameController.dispose();
     _descriptionController.dispose();
     _locationController.dispose();
-    _interestController.dispose(); // Dispose new controller
     super.dispose();
   }
 
@@ -32,22 +44,19 @@ class _CreateCommunityScreenState extends State<CreateCommunityScreen> {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
       try {
-        // Ensure location is in POINT format for backend, e.g., '(lon,lat)'
-        // You might need a map picker or separate lat/lon fields for better UX
-        String formattedLocation = _locationController.text; // Assuming user inputs '(lon,lat)' for now
+        String formattedLocation = _locationController.text; // Ensure valid format
         if (!formattedLocation.startsWith('(') || !formattedLocation.endsWith(')')) {
-           // Basic validation or formatting helper needed here
-           formattedLocation = '(0,0)'; // Default if format is wrong
+           formattedLocation = '(0,0)'; // Default value
         }
 
         await apiService.createCommunity(
           _nameController.text,
-          _descriptionController.text.isNotEmpty ? _descriptionController.text : null, // Send null if empty
-          formattedLocation, // Send formatted location string
-          _interestController.text.isNotEmpty ? _interestController.text : null, // Send interest or null
+          _descriptionController.text.isNotEmpty ? _descriptionController.text : null, 
+          formattedLocation, 
+          _selectedInterest ?? "Other", // Send selected interest or default to "Other"
           authProvider.token!,
         );
-        if (mounted) { // Check if mounted before showing SnackBar/popping
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Community created successfully!')));
           Navigator.pop(context);
         }
@@ -74,7 +83,7 @@ class _CreateCommunityScreenState extends State<CreateCommunityScreen> {
         padding: const EdgeInsets.all(16.0),
         child: Form(
           key: _formKey,
-          child: ListView( // Use ListView for scrollability
+          child: ListView(
             children: [
               TextFormField(
                 controller: _nameController,
@@ -85,19 +94,34 @@ class _CreateCommunityScreenState extends State<CreateCommunityScreen> {
               TextFormField(
                 controller: _descriptionController,
                 decoration: const InputDecoration(labelText: 'Description'),
-                 maxLines: 3,
+                maxLines: 3,
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _locationController,
                 decoration: const InputDecoration(labelText: 'Location *', hintText: 'e.g., (77.10, 28.70)'),
-                validator: (value) => value == null || value.isEmpty ? 'Please enter a location (lon,lat)' : null, // Add better validation later
+                validator: (value) => value == null || value.isEmpty ? 'Please enter a location (lon,lat)' : null,
               ),
               const SizedBox(height: 16),
-               TextFormField( // Added field for interest
-                 controller: _interestController,
-                 decoration: const InputDecoration(labelText: 'Interest / Category'),
-               ),
+              
+              // Dropdown for Interests
+              DropdownButtonFormField<String>(
+                value: _selectedInterest,
+                decoration: const InputDecoration(labelText: 'Interest / Category *'),
+                items: _interests.map((String interest) {
+                  return DropdownMenuItem<String>(
+                    value: interest,
+                    child: Text(interest),
+                  );
+                }).toList(),
+                onChanged: (String? newValue) {
+                  setState(() {
+                    _selectedInterest = newValue;
+                  });
+                },
+                validator: (value) => value == null ? 'Please select an interest' : null,
+              ),
+              
               const SizedBox(height: 24),
               _isLoading
                   ? const Center(child: CircularProgressIndicator())
