@@ -19,8 +19,9 @@ class SignupRequest(BaseModel): # Used for internal representation if needed, Fo
     interests: List[str] = []
     image_path: Optional[str] = None # Store path now
 
-class TokenData(BaseModel): # For decoding token payload
-    user_id: Optional[int] = None
+class TokenData(BaseModel): # Used for LOGIN RESPONSE and potentially decoding
+    token: str       # <--- ADD THIS FIELD
+    user_id: int     # <--- Make user_id non-optional for login response
 
 class UserBase(BaseModel):
     name: str

@@ -68,28 +68,41 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     super.dispose();
   }
 
-  void _login(ApiService apiService, AuthProvider authProvider) async {
-    if (_formKey.currentState!.validate()) {
-      setState(() => _isLoading = true);
-      try {
-        final result = await apiService.login(_emailController.text, _passwordController.text);
-        authProvider.setAuthToken(result['token']);
-        authProvider.setUserId(result['user_id'].toString());
+// In lib/screens/login_screen.dart -> _login method
 
-        // Navigate to home screen
-        Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const HomeScreen())
-        );
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString()),
-            backgroundColor: ThemeConstants.errorColor,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      } finally {
+  Future<void> _login() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+    setState(() => _isLoading = true);
+
+    // Get AuthProvider instance
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+    try {
+      // Call AuthProvider's login method - it handles API call AND state update
+      await authProvider.login(
+        _emailController.text,
+        _passwordController.text,
+      );
+
+      // If login succeeds without throwing an error, navigate
+      if (mounted && authProvider.isAuthenticated) { // Check auth state AFTER login call
+        Navigator.of(context).pushReplacementNamed('/home');
+      }
+      // No need to call setAuthToken/setUserId here anymore
+
+    } catch (error) {
+      // Show error message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Login Failed: ${error.toString()}'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    } finally {
+      // Ensure loading state is reset even if widget is removed during async call
+      if (mounted) {
         setState(() => _isLoading = false);
       }
     }
@@ -239,7 +252,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             // Login Button
                             CustomButton(
                               text: 'Login',
-                              onPressed: () => _login(apiService, authProvider),
+                              onPressed: () => _login(),
                               isLoading: _isLoading,
                               isFullWidth: true,
                               size: ButtonSize.large,

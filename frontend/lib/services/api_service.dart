@@ -6,54 +6,43 @@ import 'package:web_socket_channel/status.dart' as status; // For close codes
 import '../app_constants.dart';
 import 'package:http_parser/http_parser.dart';
 import 'dart:typed_data';
-// Removed unused MessageModel import if not directly used here
-// import '../models/message_model.dart';
 import '../models/chat_message_data.dart';
 import '../models/event_model.dart'; // Import EventModel
 
 class ApiService {
-  // Use ws:// or wss:// for WebSocket URL
-  final String baseUrl = AppConstants.baseUrl.replaceFirst('http', 'http'); // Keep HTTP for API
+  final String baseUrl = AppConstants.baseUrl; // Keep HTTP for API
   final String wsBaseUrl = AppConstants.baseUrl.replaceFirst('http', 'ws');
 
   WebSocketChannel? _channel;
-  // Ensure StreamController uses the correct ChatMessageData model
   StreamController<ChatMessageData> _messageStreamController = StreamController.broadcast();
 
   Stream<ChatMessageData> get messages => _messageStreamController.stream;
 
   // --- WebSocket Methods ---
   void connectWebSocket(String roomType, int roomId, String? token) {
-    disconnectWebSocket(); // Ensure previous connection is closed
-    // Reinitialize StreamController if it was closed
+    disconnectWebSocket();
     if (_messageStreamController.isClosed) {
       _messageStreamController = StreamController.broadcast();
     }
 
-    final url = '$wsBaseUrl/ws/$roomType/$roomId';
-    print('Attempting to connect WebSocket: $url');
-
-    // Construct headers for WebSocket connection if needed (some servers require it)
-    // final Map<String, dynamic> headers = token != null ? {'Authorization': 'Bearer $token'} : {};
-    // _channel = WebSocketChannel.connect(Uri.parse(url), protocols: ['websocket'], headers: headers); // Example with headers
+    // Construct URL, potentially adding token as query parameter if backend expects it
+    final wsUrl = '$wsBaseUrl/ws/$roomType/$roomId${token != null ? '?token=$token' : ''}';
+    print('Attempting to connect WebSocket: $wsUrl');
 
     try {
-      _channel = WebSocketChannel.connect(Uri.parse(url)); // Connect without specific headers for now
+      _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
       _channel!.stream.listen(
             (message) {
           print('WebSocket Received: $message');
           try {
             final decoded = jsonDecode(message);
-            // Check if the decoded message structure matches ChatMessageData
             if (decoded is Map<String, dynamic> && decoded.containsKey('message_id')) {
               final chatMessage = ChatMessageData.fromJson(decoded);
               if (!_messageStreamController.isClosed) {
                 _messageStreamController.add(chatMessage);
               }
             } else {
-              // Handle other types of messages or log unexpected format
               print("Received non-chat message or unexpected format via WebSocket: $decoded");
-              // Example: Handle potential server status messages or errors
               if (decoded is Map<String, dynamic> && decoded.containsKey('error')) {
                 if (!_messageStreamController.isClosed) {
                   _messageStreamController.addError("WebSocket Error: ${decoded['error']}");
@@ -70,19 +59,18 @@ class ApiService {
         onDone: () {
           print('WebSocket connection closed.');
           if (!_messageStreamController.isClosed) {
-            // Signal stream closure or handle reconnection logic here
-            // _messageStreamController.close(); // Close if no reconnection planned
+            // Add reconnection logic trigger here if desired
           }
-          _channel = null; // Clear channel reference
+          _channel = null;
         },
         onError: (error) {
           print('WebSocket error: $error');
           if (!_messageStreamController.isClosed) {
             _messageStreamController.addError('WebSocket Error: $error');
           }
-          _channel = null; // Clear channel reference on error too
+          _channel = null;
         },
-        cancelOnError: true, // Automatically unsubscribes on error
+        cancelOnError: true,
       );
       print('WebSocket connection established.');
     } catch (e) {
@@ -90,7 +78,7 @@ class ApiService {
       if (!_messageStreamController.isClosed) {
         _messageStreamController.addError('WebSocket Connection Failed: $e');
       }
-      _channel = null; // Ensure channel is null on connection failure
+      _channel = null;
     }
   }
 
@@ -98,13 +86,8 @@ class ApiService {
     if (_channel != null) {
       print('Closing WebSocket connection...');
       _channel!.sink.close(status.goingAway);
-      _channel = null; // Set to null immediately after initiating close
+      _channel = null;
     }
-    // Close the stream controller only if the ApiService itself is being disposed
-    // Do not close it here if you intend to reconnect later.
-    // if (!_messageStreamController.isClosed) {
-    //   _messageStreamController.close();
-    // }
   }
 
   void sendWebSocketMessage(String message) {
@@ -113,80 +96,98 @@ class ApiService {
       _channel!.sink.add(message);
     } else {
       print('WebSocket not connected, cannot send message.');
-      // Optionally notify the UI or try to reconnect
-      // throw Exception("WebSocket not connected.");
+      throw Exception("WebSocket not connected."); // Throw error to signal failure
     }
   }
 
   // --- Helper for HTTP ---
-  Future<Map<String, dynamic>> _handleResponse(http.Response response) async {
+  // Returns Future<dynamic> to handle different response types (Map, List, null)
+  Future<dynamic> _handleResponse(http.Response response) async {
     print("Response Status: ${response.statusCode}");
-    print("Response Body: ${response.body}"); // Log the raw body
+    print("Response Body: ${response.body}"); // Uncomment for deep debugging
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
       if (response.body.isEmpty) {
-        // Handle cases like 204 No Content or other successful empty responses
-        if (response.statusCode == 204) return {"message": "Operation successful (No Content)"};
-        return {}; // Return empty map for other empty bodies like 200 OK with no body
+        // Handle 204 No Content or other empty successes by returning null
+        return null;
       }
       try {
-        // Check if the response is expected to be a list (e.g., fetchPosts, fetchCommunities)
-        // If the root is a list, wrap it in a map. This adapts to endpoints
-        // that might return a direct list instead of a map like {"posts": [...]}.
-        // NOTE: This assumes endpoints like /posts directly return {"posts": [...]}. If they
-        // return just [...], the calling function needs to handle that.
-        // Let's assume the backend consistently returns maps for now.
         final decoded = jsonDecode(response.body);
-        if (decoded is List) {
-          // If the API directly returns a list, we might need to decide how to represent it.
-          // For now, let's throw an error or wrap it. Wrapping might hide issues.
-          print("Warning: API endpoint returned a list directly. Expected a map.");
-          // Option 1: Wrap it (use with caution)
-          // return {"data": decoded};
-          // Option 2: Throw error (safer)
-          throw FormatException("Expected a JSON map, but received a list.", response.body);
-        }
-        return decoded as Map<String, dynamic>; // Ensure it's a map
-
+        return decoded; // Return the decoded data (could be Map or List)
       } catch (e) {
-        print('JSON Decode Error: $e');
+        print('JSON Decode Error in _handleResponse: $e');
         throw Exception('Failed to parse JSON response. Body: ${response.body}');
       }
     } else {
+      // Error handling: Try to parse detail, fallback to body/status code
       String detail = 'Unknown error';
       try {
         if (response.body.isNotEmpty) {
           final errorBody = jsonDecode(response.body);
-          // Check if errorBody is a Map before accessing 'detail'
           if (errorBody is Map<String, dynamic>) {
             detail = errorBody['detail'] ?? response.body;
           } else {
-            detail = response.body; // Use raw body if not a map
+            detail = response.body;
           }
         } else {
           detail = response.reasonPhrase ?? 'Status code ${response.statusCode}';
         }
       } catch (e) {
-        // If decoding the error body fails, use the raw body
         detail = response.body.isNotEmpty ? response.body : 'Status code ${response.statusCode}';
       }
       print('API Error: ${response.statusCode} - $detail');
-      throw Exception('Request failed: $detail'); // Throw with detail
+      throw Exception('Request failed: $detail');
     }
   }
 
-  // --- Auth ---
-  Future<Map<String, dynamic>> login(String email, String password) async {
-    final url = '$baseUrl/login';
-    print('Attempting login for: $email');
-    final response = await http.post(
-      Uri.parse(url),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': email, 'password': password}),
-    );
-    return _handleResponse(response);
+  // --- General Request Helper (Optional but Recommended) ---
+  // Example: You might consolidate header logic etc. here
+  Future<http.Response> _makeRequest(String path, {String method = 'GET', Map<String, String>? headers, dynamic body, String? token}) async {
+    final url = Uri.parse('$baseUrl$path');
+    final Map<String, String> requestHeaders = {'Content-Type': 'application/json', ...?headers};
+    if (token != null) {
+      requestHeaders['Authorization'] = 'Bearer $token';
+    }
+
+    switch (method.toUpperCase()) {
+      case 'POST':
+        return await http.post(url, headers: requestHeaders, body: body != null ? jsonEncode(body) : null);
+      case 'PUT':
+        return await http.put(url, headers: requestHeaders, body: body != null ? jsonEncode(body) : null);
+      case 'DELETE':
+        return await http.delete(url, headers: requestHeaders, body: body != null ? jsonEncode(body) : null);
+      case 'GET':
+      default:
+        return await http.get(url, headers: requestHeaders);
+    }
   }
 
+
+  // --- Auth ---
+  // Line ~174
+  Future<Map<String, dynamic>> login(String email, String password) async {
+    final url = '$baseUrl/login'; // Backend router prefix is empty for auth
+    print('Attempting login for: $email');
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'password': password}),
+      );
+      final dynamic data = await _handleResponse(response);
+      if (data is Map<String, dynamic>) {
+        return data;
+      } else {
+        // Should not happen for successful login based on backend code
+        throw Exception("Login response was not a valid map.");
+      }
+    } catch (e) {
+      print("Error during login: $e");
+      throw Exception("Login failed: $e");
+    }
+  }
+
+  // Line ~225
   Future<Map<String, dynamic>> signup(
       String name,
       String username,
@@ -198,33 +199,30 @@ class ApiService {
       List<String> interests,
       Uint8List? imageBytes,
       String? imageFileName) async {
-    final url = Uri.parse('$baseUrl/signup');
+    final url = Uri.parse('$baseUrl/signup'); // Backend router prefix is empty for auth
     print('Attempting signup for: $username');
     var request = http.MultipartRequest('POST', url);
 
-    // Add form fields
     request.fields['name'] = name;
     request.fields['username'] = username;
     request.fields['email'] = email;
     request.fields['password'] = password;
     request.fields['gender'] = gender;
-    // Backend expects location string like '(lon,lat)', frontend might need to construct this
-    request.fields['current_location'] = currentLocation; // Ensure format is correct
+    request.fields['current_location'] = currentLocation; // Ensure format like '(lon,lat)'
     request.fields['college'] = college;
 
-    // Backend expects interests as multiple form fields 'interests=value1&interests=value2'
-    interests.forEach((interest) {
-      request.fields['interests'] = interest; // Add each interest with the same key
-    });
+    // Send interests correctly for FastAPI Form(List[str])
+    for (String interest in interests) {
+      request.fields['interests'] = interest;
+    }
 
-    // Add image file if provided
     if (imageBytes != null && imageFileName != null) {
       request.files.add(
         http.MultipartFile.fromBytes(
-          'image', // Field name expected by FastAPI backend
+          'image', // Field name expected by backend
           imageBytes,
-          filename: imageFileName, // Filename for the backend
-          contentType: MediaType('image', _getFileExtension(imageFileName)), // Guess content type
+          filename: imageFileName,
+          contentType: MediaType('image', _getFileExtension(imageFileName)),
         ),
       );
       print('Adding image to signup request: $imageFileName');
@@ -235,33 +233,47 @@ class ApiService {
     try {
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
-      return _handleResponse(response);
+      final dynamic data = await _handleResponse(response);
+      if (data is Map<String, dynamic>) {
+        return data; // Returns token + user_id on success
+      } else {
+        throw Exception("Signup response was not a valid map.");
+      }
     } catch (e) {
       print("Error during signup request: $e");
       throw Exception("Signup request failed: $e");
     }
   }
 
-  // Helper to get file extension
   String _getFileExtension(String fileName) {
     try {
       final ext = fileName.split('.').last.toLowerCase();
       const validExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
-      return validExtensions.contains(ext) ? ext : 'jpeg'; // Default if unknown
+      return validExtensions.contains(ext) ? ext : 'jpeg';
     } catch (e) {
-      return 'jpeg'; // Default on error
+      return 'jpeg';
     }
   }
 
-  // Fetch current user details
+  // Line ~251 -> Corrected path
   Future<Map<String, dynamic>> fetchUserDetails(String token) async {
-    final url = Uri.parse('$baseUrl/me');
+    final url = Uri.parse('$baseUrl/me'); // Correct endpoint from backend/routers/auth.py
     print('Fetching user details...');
-    final response = await http.get(
-      url,
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    return _handleResponse(response); // Use the handler
+    try {
+      final response = await http.get(
+        url,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      final dynamic data = await _handleResponse(response);
+      if (data is Map<String, dynamic>) {
+        return data; // Backend returns UserDisplay schema
+      } else {
+        throw Exception("Fetch user details response was not a valid map.");
+      }
+    } catch(e) {
+      print("Error fetching user details: $e");
+      throw Exception("Failed to fetch user details: $e");
+    }
   }
 
   // --- Posts ---
@@ -280,9 +292,15 @@ class ApiService {
 
     try {
       final response = await http.get(url, headers: headers);
-      final data = await _handleResponse(response);
-      // Backend returns {'posts': [...]}, so extract the list
-      return (data['posts'] as List<dynamic>?) ?? [];
+      final dynamic data = await _handleResponse(response);
+      // Backend returns a List directly for this endpoint based on routers/posts.py
+      if (data is List) {
+        return data;
+      } else if (data == null && response.statusCode >= 200 && response.statusCode < 300) {
+        return []; // Handle empty success
+      } else {
+        throw Exception("Fetch posts response was not a valid list.");
+      }
     } catch (e) {
       print("Error fetching posts: $e");
       throw Exception("Failed to load posts: $e");
@@ -299,44 +317,75 @@ class ApiService {
 
     try {
       final response = await http.get(url, headers: headers);
-      final data = await _handleResponse(response);
-      return (data['posts'] as List<dynamic>?) ?? [];
+      final dynamic data = await _handleResponse(response);
+      // Backend returns a List directly
+      if (data is List) {
+        return data;
+      } else if (data == null && response.statusCode >= 200 && response.statusCode < 300) {
+        return [];
+      } else {
+        throw Exception("Fetch trending posts response was not a valid list.");
+      }
     } catch (e) {
       print("Error fetching trending posts: $e");
       throw Exception("Failed to load trending posts: $e");
     }
   }
 
+  // Line ~311
   Future<Map<String, dynamic>> createPost(
       String title, String content, int? communityId, String token) async {
     final url = '$baseUrl/posts';
     print('Creating post: $title');
-    final response = await http.post(
-      Uri.parse(url),
-      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
-      body: jsonEncode({
-        'title': title,
-        'content': content,
-        // Only include community_id if it's not null
-        if (communityId != null) 'community_id': communityId,
-      }),
-    );
-    return _handleResponse(response);
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+        body: jsonEncode({
+          'title': title,
+          'content': content,
+          if (communityId != null) 'community_id': communityId,
+        }),
+      );
+      final dynamic data = await _handleResponse(response);
+      // Backend returns PostDisplay schema (Map)
+      if (data is Map<String, dynamic>) {
+        return data;
+      } else {
+        throw Exception("Create post response was not a valid map.");
+      }
+    } catch(e) {
+      print("Error creating post: $e");
+      throw Exception("Failed to create post: $e");
+    }
   }
 
+  // Line ~326
   Future<Map<String, dynamic>> deletePost(String postId, String token) async {
-    final url = '$baseUrl/posts/$postId';
+    // Backend expects int ID in path
+    final url = '$baseUrl/posts/${int.tryParse(postId) ?? 0}';
     print('Deleting post ID: $postId');
-    final response = await http.delete(
-      Uri.parse(url),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    // Delete returns 204 No Content on success typically
-    if (response.statusCode == 204) {
-      return {"message": "Post deleted successfully"};
+    try {
+      final response = await http.delete(
+        Uri.parse(url),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      // Check for 204 No Content specifically
+      if (response.statusCode == 204) {
+        return {"message": "Post deleted successfully"};
+      }
+      // If not 204, handle potential error response body
+      final dynamic data = await _handleResponse(response);
+      if (data is Map<String, dynamic>) {
+        return data; // Return error details if available
+      } else {
+        // This case handles if _handleResponse returned null unexpectedly on error
+        throw Exception("Delete post failed with status ${response.statusCode}");
+      }
+    } catch(e) {
+      print("Error deleting post: $e");
+      throw Exception("Failed to delete post: $e");
     }
-    // Otherwise, handle potential errors (like 404 or 403)
-    return _handleResponse(response);
   }
 
   // --- Communities ---
@@ -349,8 +398,15 @@ class ApiService {
     }
     try {
       final response = await http.get(url, headers: headers);
-      final data = await _handleResponse(response);
-      return (data['communities'] as List<dynamic>?) ?? [];
+      final dynamic data = await _handleResponse(response);
+      // Backend returns List directly based on routers/communities.py
+      if (data is List) {
+        return data;
+      } else if (data == null && response.statusCode >= 200 && response.statusCode < 300) {
+        return [];
+      } else {
+        throw Exception("Fetch communities response was not a valid list.");
+      }
     } catch (e) {
       print("Error fetching communities: $e");
       throw Exception("Failed to load communities: $e");
@@ -366,57 +422,101 @@ class ApiService {
     }
     try {
       final response = await http.get(url, headers: headers);
-      final data = await _handleResponse(response);
-      return (data['communities'] as List<dynamic>?) ?? [];
+      final dynamic data = await _handleResponse(response);
+      // Backend returns List directly
+      if (data is List) {
+        return data;
+      } else if (data == null && response.statusCode >= 200 && response.statusCode < 300) {
+        return [];
+      } else {
+        throw Exception("Fetch trending communities response was not a valid list.");
+      }
     } catch (e) {
       print("Error fetching trending communities: $e");
       throw Exception("Failed to load trending communities: $e");
     }
   }
 
+  // Line ~373
   Future<Map<String, dynamic>> fetchCommunityDetails(String communityId, String? token) async {
-    // Convert communityId to int if backend expects integer path parameter
-    final url = Uri.parse('$baseUrl/communities/$communityId/details');
+    // Backend expects int ID in path
+    final url = Uri.parse('$baseUrl/communities/${int.tryParse(communityId) ?? 0}/details');
     print("Fetching community details from URL: $url");
     final Map<String, String> headers = {};
     if (token != null) {
       headers['Authorization'] = 'Bearer $token';
     }
-    final response = await http.get(url, headers: headers);
-    return _handleResponse(response);
+    try {
+      final response = await http.get(url, headers: headers);
+      final dynamic data = await _handleResponse(response);
+      // Backend returns CommunityDisplay schema (Map)
+      if (data is Map<String, dynamic>) {
+        return data;
+      } else {
+        throw Exception("Fetch community details response was not a valid map.");
+      }
+    } catch(e) {
+      print("Error fetching community details: $e");
+      throw Exception("Failed to fetch community details: $e");
+    }
   }
 
+  // Line ~390
   Future<Map<String, dynamic>> createCommunity(
       String name, String? description, String primaryLocation, String? interest, String token) async {
     final url = '$baseUrl/communities';
     print('Creating community: $name');
-    final response = await http.post(
-      Uri.parse(url),
-      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
-      body: jsonEncode({
-        'name': name,
-        'description': description, // Backend handles null
-        'primary_location': primaryLocation, // Ensure format '(lon,lat)'
-        'interest': interest, // Backend handles null
-      }),
-    );
-    return _handleResponse(response);
-  }
-
-  Future<Map<String, dynamic>> deleteCommunity(String communityId, String token) async {
-    final url = '$baseUrl/communities/$communityId';
-    print('Deleting community ID: $communityId');
-    final response = await http.delete(
-      Uri.parse(url),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    if (response.statusCode == 204) {
-      return {"message": "Community deleted successfully"};
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+        body: jsonEncode({
+          'name': name,
+          'description': description,
+          'primary_location': primaryLocation, // Ensure format '(lon,lat)'
+          'interest': interest,
+        }),
+      );
+      final dynamic data = await _handleResponse(response);
+      // Backend returns CommunityDisplay schema (Map)
+      if (data is Map<String, dynamic>) {
+        return data;
+      } else {
+        throw Exception("Create community response was not a valid map.");
+      }
+    } catch(e) {
+      print("Error creating community: $e");
+      throw Exception("Failed to create community: $e");
     }
-    return _handleResponse(response);
   }
 
-  // --- Voting (Unified Endpoint Call) ---
+  // Line ~403
+  Future<Map<String, dynamic>> deleteCommunity(String communityId, String token) async {
+    // Backend expects int ID in path
+    final url = '$baseUrl/communities/${int.tryParse(communityId) ?? 0}';
+    print('Deleting community ID: $communityId');
+    try {
+      final response = await http.delete(
+        Uri.parse(url),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (response.statusCode == 204) {
+        return {"message": "Community deleted successfully"};
+      }
+      final dynamic data = await _handleResponse(response);
+      if (data is Map<String, dynamic>) {
+        return data; // Return error details
+      } else {
+        throw Exception("Delete community failed with status ${response.statusCode}");
+      }
+    } catch(e) {
+      print("Error deleting community: $e");
+      throw Exception("Failed to delete community: $e");
+    }
+  }
+
+  // --- Voting ---
+  // Line ~420
   Future<Map<String, dynamic>> vote(
       {int? postId, int? replyId, required bool voteType, required String token}) async {
     final url = '$baseUrl/votes';
@@ -425,34 +525,61 @@ class ApiService {
     if (postId != null) body['post_id'] = postId;
     if (replyId != null) body['reply_id'] = replyId;
 
-    final response = await http.post(
-      Uri.parse(url),
-      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
-      body: jsonEncode(body),
-    );
-    return _handleResponse(response);
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+        body: jsonEncode(body),
+      );
+      final dynamic data = await _handleResponse(response);
+      // Backend returns a message map like {"message": "Vote updated", ...}
+      if (data is Map<String, dynamic>) {
+        return data;
+      } else if (data == null && response.statusCode >= 200 && response.statusCode < 300){
+        // Handle cases where a successful vote might return an empty body (though unlikely based on backend)
+        return {"message": "Vote operation successful (empty response)"};
+      }
+      else {
+        throw Exception("Vote response was not a valid map.");
+      }
+    } catch(e) {
+      print("Error during vote: $e");
+      throw Exception("Vote failed: $e");
+    }
   }
 
   // --- Replies ---
+  // Line ~437
   Future<Map<String, dynamic>> createReply(
       int postId, String content, int? parentReplyId, String token) async {
     final url = '$baseUrl/replies';
     print('Creating reply for post $postId');
-    final response = await http.post(
-      Uri.parse(url),
-      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
-      body: jsonEncode({
-        'post_id': postId,
-        'content': content,
-        'parent_reply_id': parentReplyId, // Backend handles null
-      }),
-    );
-    return _handleResponse(response);
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+        body: jsonEncode({
+          'post_id': postId,
+          'content': content,
+          'parent_reply_id': parentReplyId,
+        }),
+      );
+      final dynamic data = await _handleResponse(response);
+      // Backend returns ReplyDisplay schema (Map)
+      if (data is Map<String, dynamic>) {
+        return data;
+      } else {
+        throw Exception("Create reply response was not a valid map.");
+      }
+    } catch(e) {
+      print("Error creating reply: $e");
+      throw Exception("Failed to create reply: $e");
+    }
   }
 
   Future<List<dynamic>> fetchReplies(String postId, String? token) async {
-    // Ensure postId is treated as a string for the URL path
-    final url = Uri.parse('$baseUrl/replies/$postId');
+    // Backend expects int ID in path
+    final url = Uri.parse('$baseUrl/replies/${int.tryParse(postId) ?? 0}');
     print("Fetching replies for post $postId from URL: $url");
     final Map<String, String> headers = {};
     if (token != null) {
@@ -460,115 +587,246 @@ class ApiService {
     }
     try {
       final response = await http.get(url, headers: headers);
-      final data = await _handleResponse(response);
-      return (data['replies'] as List<dynamic>?) ?? [];
+      final dynamic data = await _handleResponse(response);
+      // Backend returns a List directly
+      if (data is List) {
+        return data;
+      } else if (data == null && response.statusCode >= 200 && response.statusCode < 300) {
+        return [];
+      } else {
+        throw Exception("Fetch replies response was not a valid list.");
+      }
     } catch (e) {
       print("Error fetching replies for post $postId: $e");
       throw Exception("Failed to load replies: $e");
     }
   }
 
+  // Line ~468
   Future<Map<String, dynamic>> deleteReply(String replyId, String token) async {
-    final url = '$baseUrl/replies/$replyId';
+    // Backend expects int ID in path
+    final url = '$baseUrl/replies/${int.tryParse(replyId) ?? 0}';
     print('Deleting reply ID: $replyId');
-    final response = await http.delete(
-      Uri.parse(url),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    if (response.statusCode == 204) {
-      return {"message": "Reply deleted successfully"};
+    try {
+      final response = await http.delete(
+        Uri.parse(url),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (response.statusCode == 204) {
+        return {"message": "Reply deleted successfully"};
+      }
+      final dynamic data = await _handleResponse(response);
+      if (data is Map<String, dynamic>) {
+        return data; // Return error details
+      } else {
+        throw Exception("Delete reply failed with status ${response.statusCode}");
+      }
+    } catch(e) {
+      print("Error deleting reply: $e");
+      throw Exception("Failed to delete reply: $e");
     }
-    return _handleResponse(response);
   }
 
   // --- Membership, Favorites, Community Posts ---
+  // Line ~479
   Future<Map<String, dynamic>> joinCommunity(String communityId, String token) async {
-    final url = '$baseUrl/communities/$communityId/join';
+    // Backend expects int ID in path
+    final url = '$baseUrl/communities/${int.tryParse(communityId) ?? 0}/join';
     print('Joining community ID: $communityId');
-    final response = await http.post(
-      Uri.parse(url),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    return _handleResponse(response);
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      final dynamic data = await _handleResponse(response);
+      // Backend returns message map
+      if (data is Map<String, dynamic>) {
+        return data;
+      } else if (data == null && response.statusCode >= 200 && response.statusCode < 300){
+        return {"message": "Join operation successful (empty response)"};
+      } else {
+        throw Exception("Join community response was not a valid map.");
+      }
+    } catch(e) {
+      print("Error joining community: $e");
+      throw Exception("Failed to join community: $e");
+    }
   }
 
+  // Line ~489
   Future<Map<String, dynamic>> leaveCommunity(String communityId, String token) async {
-    final url = '$baseUrl/communities/$communityId/leave';
+    // Backend expects int ID in path
+    final url = '$baseUrl/communities/${int.tryParse(communityId) ?? 0}/leave';
     print('Leaving community ID: $communityId');
-    final response = await http.delete(
-      Uri.parse(url),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    return _handleResponse(response);
+    try {
+      final response = await http.delete(
+        Uri.parse(url),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      final dynamic data = await _handleResponse(response);
+      // Backend returns message map
+      if (data is Map<String, dynamic>) {
+        return data;
+      } else if (data == null && response.statusCode >= 200 && response.statusCode < 300){
+        return {"message": "Leave operation successful (empty response)"};
+      } else {
+        throw Exception("Leave community response was not a valid map.");
+      }
+    } catch(e) {
+      print("Error leaving community: $e");
+      throw Exception("Failed to leave community: $e");
+    }
   }
 
+  // Line ~499
   Future<Map<String, dynamic>> favoritePost(String postId, String token) async {
-    final url = '$baseUrl/posts/$postId/favorite';
+    // NOTE: Backend doesn't seem to have /favorite endpoints in routers/posts.py
+    // Assuming it should exist:
+    final url = '$baseUrl/posts/${int.tryParse(postId) ?? 0}/favorite'; // Assumed Path
     print('Favoriting post ID: $postId');
-    final response = await http.post(
-      Uri.parse(url),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    return _handleResponse(response);
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      final dynamic data = await _handleResponse(response);
+      if (data is Map<String, dynamic>) {
+        return data;
+      } else if (data == null && response.statusCode >= 200 && response.statusCode < 300){
+        return {"message": "Favorite post operation successful"};
+      } else {
+        throw Exception("Favorite post response was not a valid map.");
+      }
+    } catch(e) {
+      print("Error favoriting post: $e");
+      throw Exception("Failed to favorite post: $e");
+    }
   }
 
+  // Line ~509
   Future<Map<String, dynamic>> unfavoritePost(String postId, String token) async {
-    final url = '$baseUrl/posts/$postId/unfavorite';
+    // NOTE: Backend doesn't seem to have /unfavorite endpoints in routers/posts.py
+    // Assuming it should exist:
+    final url = '$baseUrl/posts/${int.tryParse(postId) ?? 0}/unfavorite'; // Assumed Path
     print('Unfavoriting post ID: $postId');
-    final response = await http.delete(
-      Uri.parse(url),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    return _handleResponse(response);
+    try {
+      final response = await http.delete(
+        Uri.parse(url),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      final dynamic data = await _handleResponse(response);
+      if (data is Map<String, dynamic>) {
+        return data;
+      } else if (data == null && response.statusCode >= 200 && response.statusCode < 300){
+        return {"message": "Unfavorite post operation successful"};
+      } else {
+        throw Exception("Unfavorite post response was not a valid map.");
+      }
+    } catch(e) {
+      print("Error unfavoriting post: $e");
+      throw Exception("Failed to unfavorite post: $e");
+    }
   }
 
+  // Line ~519
   Future<Map<String, dynamic>> favoriteReply(String replyId, String token) async {
-    final url = '$baseUrl/replies/$replyId/favorite';
+    final url = '$baseUrl/replies/${int.tryParse(replyId) ?? 0}/favorite';
     print('Favoriting reply ID: $replyId');
-    final response = await http.post(
-      Uri.parse(url),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    return _handleResponse(response);
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      final dynamic data = await _handleResponse(response);
+      if (data is Map<String, dynamic>) {
+        return data;
+      } else if (data == null && response.statusCode >= 200 && response.statusCode < 300){
+        return {"message": "Favorite reply operation successful"};
+      } else {
+        throw Exception("Favorite reply response was not a valid map.");
+      }
+    } catch(e) {
+      print("Error favoriting reply: $e");
+      throw Exception("Failed to favorite reply: $e");
+    }
   }
 
+  // Line ~529
   Future<Map<String, dynamic>> unfavoriteReply(String replyId, String token) async {
-    final url = '$baseUrl/replies/$replyId/unfavorite';
+    final url = '$baseUrl/replies/${int.tryParse(replyId) ?? 0}/unfavorite';
     print('Unfavoriting reply ID: $replyId');
-    final response = await http.delete(
-      Uri.parse(url),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    return _handleResponse(response);
+    try {
+      final response = await http.delete(
+        Uri.parse(url),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      final dynamic data = await _handleResponse(response);
+      if (data is Map<String, dynamic>) {
+        return data;
+      } else if (data == null && response.statusCode >= 200 && response.statusCode < 300){
+        return {"message": "Unfavorite reply operation successful"};
+      } else {
+        throw Exception("Unfavorite reply response was not a valid map.");
+      }
+    } catch(e) {
+      print("Error unfavoriting reply: $e");
+      throw Exception("Failed to unfavorite reply: $e");
+    }
   }
 
+  // Line ~540
   Future<Map<String, dynamic>> addPostToCommunity(
       String communityId, String postId, String token) async {
-    final url = '$baseUrl/communities/$communityId/add_post/$postId';
+    final url = '$baseUrl/communities/${int.tryParse(communityId) ?? 0}/add_post/${int.tryParse(postId) ?? 0}';
     print('Adding post $postId to community $communityId');
-    final response = await http.post(
-      Uri.parse(url),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    return _handleResponse(response);
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      final dynamic data = await _handleResponse(response);
+      if (data is Map<String, dynamic>) {
+        return data;
+      } else if (data == null && response.statusCode >= 200 && response.statusCode < 300){
+        return {"message": "Add post to community successful"};
+      } else {
+        throw Exception("Add post to community response was not a valid map.");
+      }
+    } catch(e) {
+      print("Error adding post to community: $e");
+      throw Exception("Failed to add post to community: $e");
+    }
   }
 
+  // Line ~551
   Future<Map<String, dynamic>> removePostFromCommunity(
       String communityId, String postId, String token) async {
-    final url = '$baseUrl/communities/$communityId/remove_post/$postId';
+    final url = '$baseUrl/communities/${int.tryParse(communityId) ?? 0}/remove_post/${int.tryParse(postId) ?? 0}';
     print('Removing post $postId from community $communityId');
-    final response = await http.delete(
-      Uri.parse(url),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    return _handleResponse(response);
+    try {
+      final response = await http.delete(
+        Uri.parse(url),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      final dynamic data = await _handleResponse(response);
+      if (data is Map<String, dynamic>) {
+        return data;
+      } else if (data == null && response.statusCode >= 200 && response.statusCode < 300){
+        return {"message": "Remove post from community successful"};
+      } else {
+        throw Exception("Remove post from community response was not a valid map.");
+      }
+    } catch(e) {
+      print("Error removing post from community: $e");
+      throw Exception("Failed to remove post from community: $e");
+    }
   }
 
   // --- Chat (HTTP Methods) ---
   Future<List<dynamic>> fetchChatMessages({int? communityId, int? eventId, int? beforeId, int limit = 50, String? token}) async {
     final Map<String, String> queryParams = {'limit': limit.toString()};
     if (communityId != null) queryParams['community_id'] = communityId.toString();
-    if (eventId != null) queryParams['event_id'] = eventId.toString(); // Use event_id
+    if (eventId != null) queryParams['event_id'] = eventId.toString();
     if (beforeId != null) queryParams['before_id'] = beforeId.toString();
 
     final url = Uri.parse('$baseUrl/chat/messages').replace(queryParameters: queryParams);
@@ -579,52 +837,79 @@ class ApiService {
 
     try {
       final response = await http.get(url, headers: headers);
-      final data = await _handleResponse(response);
-      // Backend returns {"messages": [...]}, extract the list
-      return (data['messages'] as List<dynamic>?) ?? [];
+      final dynamic data = await _handleResponse(response);
+      // Backend returns a List directly based on routers/chat.py
+      if (data is List) {
+        return data;
+      } else if (data == null && response.statusCode >= 200 && response.statusCode < 300) {
+        return [];
+      } else {
+        throw Exception("Fetch chat messages response was not a valid list.");
+      }
     } catch (e) {
       print("Error fetching chat messages: $e");
       throw Exception("Failed to load chat messages: $e");
     }
   }
 
+  // Line ~591
   Future<Map<String, dynamic>> sendChatMessageHttp(String content, int? communityId, int? eventId, String token) async {
     final url = Uri.parse('$baseUrl/chat/messages');
     final Map<String, String> queryParams = {};
     if (communityId != null) queryParams['community_id'] = communityId.toString();
-    if (eventId != null) queryParams['event_id'] = eventId.toString(); // Use event_id
+    if (eventId != null) queryParams['event_id'] = eventId.toString();
 
     print('Sending HTTP chat message: comm=$communityId, event=$eventId, content=$content');
 
-    final response = await http.post(
-      url.replace(queryParameters: queryParams.isNotEmpty ? queryParams : null),
-      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
-      body: jsonEncode({'content': content}),
-    );
-    return _handleResponse(response); // Returns the created ChatMessageData
+    try {
+      final response = await http.post(
+        url.replace(queryParameters: queryParams.isNotEmpty ? queryParams : null),
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+        body: jsonEncode({'content': content}),
+      );
+      final dynamic data = await _handleResponse(response);
+      // Backend returns the created ChatMessageData (Map)
+      if (data is Map<String, dynamic>) {
+        return data;
+      } else {
+        throw Exception("Send chat message response was not a valid map.");
+      }
+    } catch(e) {
+      print("Error sending chat message: $e");
+      throw Exception("Failed to send chat message: $e");
+    }
   }
 
   // --- Events ---
   Future<EventModel> createEvent(
       int communityId, String title, String? description, String location,
-      DateTime eventTimestamp, int maxParticipants, String token, {String? imageUrl}) async { // Added optional imageUrl
+      DateTime eventTimestamp, int maxParticipants, String token, {String? imageUrl}) async {
     final url = '$baseUrl/communities/$communityId/events';
     print('Creating event in community $communityId: $title');
-    final response = await http.post(
-      Uri.parse(url),
-      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
-      body: jsonEncode({
-        'title': title,
-        'description': description,
-        'location': location,
-        'event_timestamp': eventTimestamp.toUtc().toIso8601String(), // Send as UTC ISO string
-        'max_participants': maxParticipants,
-        'image_url': imageUrl, // Include image URL if provided
-      }),
-    );
-    final data = await _handleResponse(response);
-    // Backend returns the created event details including participant_count=1
-    return EventModel.fromJson(data);
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+        body: jsonEncode({
+          'title': title,
+          'description': description,
+          'location': location,
+          'event_timestamp': eventTimestamp.toUtc().toIso8601String(),
+          'max_participants': maxParticipants,
+          'image_url': imageUrl,
+        }),
+      );
+      final dynamic data = await _handleResponse(response);
+      if (data is Map<String, dynamic>) {
+        // Parse the Map into an EventModel before returning
+        return EventModel.fromJson(data);
+      } else {
+        throw Exception("Create event response was not a valid map.");
+      }
+    } catch(e) {
+      print("Error creating event: $e");
+      throw Exception("Failed to create event: $e");
+    }
   }
 
   Future<List<EventModel>> fetchCommunityEvents(int communityId, String? token) async {
@@ -635,32 +920,15 @@ class ApiService {
 
     try {
       final response = await http.get(Uri.parse(url), headers: headers);
-      // The backend returns a list directly for this endpoint
-      final rawData = jsonDecode(response.body);
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        if (rawData is List) {
-          return rawData.map((eventJson) => EventModel.fromJson(eventJson as Map<String, dynamic>)).toList();
-        } else {
-          throw FormatException("Expected a list of events, but received: $rawData");
-        }
+      // This specific endpoint returns a list directly from the backend router
+      final dynamic data = await _handleResponse(response);
+      if (data is List) {
+        // Parse each item in the list into an EventModel
+        return data.map((eventJson) => EventModel.fromJson(eventJson as Map<String, dynamic>)).toList();
+      } else if (data == null && response.statusCode >= 200 && response.statusCode < 300) {
+        return []; // Return empty list on success with no content
       } else {
-        // Use _handleResponse logic for errors, adapting for list expectation
-        String detail = 'Unknown error';
-        try {
-          if (response.body.isNotEmpty) {
-            final errorBody = jsonDecode(response.body);
-            if (errorBody is Map<String, dynamic>) {
-              detail = errorBody['detail'] ?? response.body;
-            } else {
-              detail = response.body;
-            }
-          } else {
-            detail = response.reasonPhrase ?? 'Status code ${response.statusCode}';
-          }
-        } catch (e) {
-          detail = response.body.isNotEmpty ? response.body : 'Status code ${response.statusCode}';
-        }
-        throw Exception('Request failed: $detail');
+        throw FormatException("Expected a list of events, but received: $data");
       }
     } catch (e) {
       print("Error fetching community events: $e");
@@ -674,71 +942,122 @@ class ApiService {
     final Map<String, String> headers = {};
     if (token != null) headers['Authorization'] = 'Bearer $token';
 
-    final response = await http.get(Uri.parse(url), headers: headers);
-    final data = await _handleResponse(response);
-    return EventModel.fromJson(data);
+    try {
+      final response = await http.get(Uri.parse(url), headers: headers);
+      final dynamic data = await _handleResponse(response);
+      if (data is Map<String, dynamic>) {
+        return EventModel.fromJson(data);
+      } else {
+        throw Exception("Fetch event details response was not a valid map.");
+      }
+    } catch(e) {
+      print("Error fetching event details: $e");
+      throw Exception("Failed to fetch event details: $e");
+    }
   }
 
   Future<EventModel> updateEvent(int eventId, Map<String, dynamic> updateData, String token) async {
-    // Filter out null values from updateData if backend doesn't handle them
-    // updateData.removeWhere((key, value) => value == null);
-
-    // Convert DateTime to ISO string if present
     if (updateData.containsKey('event_timestamp') && updateData['event_timestamp'] is DateTime) {
       updateData['event_timestamp'] = (updateData['event_timestamp'] as DateTime).toUtc().toIso8601String();
     }
 
     final url = '$baseUrl/events/$eventId';
     print('Updating event $eventId');
-    final response = await http.put(
-      Uri.parse(url),
-      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
-      body: jsonEncode(updateData),
-    );
-    final data = await _handleResponse(response);
-    return EventModel.fromJson(data);
+    try {
+      final response = await http.put(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+        body: jsonEncode(updateData),
+      );
+      final dynamic data = await _handleResponse(response);
+      if (data is Map<String, dynamic>) {
+        return EventModel.fromJson(data);
+      } else {
+        throw Exception("Update event response was not a valid map.");
+      }
+    } catch(e) {
+      print("Error updating event: $e");
+      throw Exception("Failed to update event: $e");
+    }
   }
 
+  // Line ~721
   Future<Map<String, dynamic>> deleteEvent(int eventId, String token) async {
     final url = '$baseUrl/events/$eventId';
     print('Deleting event $eventId');
-    final response = await http.delete(
-      Uri.parse(url),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    if (response.statusCode == 204) {
-      return {"message": "Event deleted successfully"};
+    try {
+      final response = await http.delete(
+        Uri.parse(url),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (response.statusCode == 204) {
+        return {"message": "Event deleted successfully"};
+      }
+      final dynamic data = await _handleResponse(response);
+      if (data is Map<String, dynamic>) {
+        return data; // Return error details
+      } else {
+        throw Exception("Delete event failed with status ${response.statusCode}");
+      }
+    } catch(e) {
+      print("Error deleting event: $e");
+      throw Exception("Failed to delete event: $e");
     }
-    return _handleResponse(response);
   }
 
   Future<Map<String, dynamic>> joinEvent(String eventId, String token) async {
     // Assuming backend uses int ID in path
-    final url = '$baseUrl/events/${int.parse(eventId)}/join';
+    final url = '$baseUrl/events/${int.tryParse(eventId) ?? 0}/join';
     print('Joining event $eventId');
-    final response = await http.post(
-      Uri.parse(url),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    return _handleResponse(response);
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      final dynamic data = await _handleResponse(response);
+      // Backend returns message map
+      if (data is Map<String, dynamic>) {
+        return data;
+      } else if (data == null && response.statusCode >= 200 && response.statusCode < 300){
+        return {"message": "Join event operation successful"};
+      } else {
+        throw Exception("Join event response was not a valid map.");
+      }
+    } catch(e) {
+      print("Error joining event: $e");
+      throw Exception("Failed to join event: $e");
+    }
   }
 
   Future<Map<String, dynamic>> leaveEvent(String eventId, String token) async {
     // Assuming backend uses int ID in path
-    final url = '$baseUrl/events/${int.parse(eventId)}/leave';
+    final url = '$baseUrl/events/${int.tryParse(eventId) ?? 0}/leave';
     print('Leaving event $eventId');
-    final response = await http.delete(
-      Uri.parse(url),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    return _handleResponse(response);
+    try {
+      final response = await http.delete(
+        Uri.parse(url),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      final dynamic data = await _handleResponse(response);
+      // Backend returns message map
+      if (data is Map<String, dynamic>) {
+        return data;
+      } else if (data == null && response.statusCode >= 200 && response.statusCode < 300){
+        return {"message": "Leave event operation successful"};
+      } else {
+        throw Exception("Leave event response was not a valid map.");
+      }
+    } catch(e) {
+      print("Error leaving event: $e");
+      throw Exception("Failed to leave event: $e");
+    }
   }
 
   // --- Cleanup ---
   void dispose() {
     print("Disposing ApiService...");
     disconnectWebSocket();
-    if (!_messageStreamController.isClosed) { // Check before closing
+    if (!_messageStreamController.isClosed) {
       _messageStreamController.close();
       print("Message Stream Controller closed.");
     }

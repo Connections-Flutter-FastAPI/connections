@@ -345,6 +345,7 @@ class _CommunitiesScreenState extends State<CommunitiesScreen> with AutomaticKee
         ],
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'communitiesFab', // <--- ADD UNIQUE TAG
         onPressed: _navigateToCreateCommunity,
         tooltip: "Create Community",
         child: const Icon(Icons.add),
