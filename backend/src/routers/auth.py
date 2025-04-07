@@ -9,7 +9,7 @@ from .. import schemas, crud, utils, auth # Relative imports
 from ..database import get_db_connection
 
 router = APIRouter(
-    prefix="/auth", # Changed prefix to /auth
+    prefix="", # Changed prefix to /auth
     tags=["Authentication"],
 )
 

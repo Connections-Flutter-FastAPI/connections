@@ -1,5 +1,7 @@
 .env
 backend/bin/
+backend/__pycache__/
+backend/src/lib64/
 backend/lib/
 backend/include/
 backend/lib64/

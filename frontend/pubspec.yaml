@@ -1,4 +1,4 @@
-name: connections
+name: tern
 description: A social network for communities
 version: 1.0.0+1
 publish_to: 'none'
@@ -24,6 +24,7 @@ dependencies:
   shared_preferences: ^2.2.1
   flutter_secure_storage: ^9.0.0
   web_socket_channel: ^2.4.0 # For WebSocket communication
+  flutter_launcher_icons: "^0.14.3"
 
 dev_dependencies:
   flutter_test:
@@ -49,3 +50,21 @@ flutter:
           weight: 500
         - asset: assets/fonts/Poppins-Light.ttf
           weight: 300
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icons/Android Icons/192x192.png"
+  min_sdk_android: 21 # android min sdk min:16, default 21
+  web:
+    generate: true
+    image_path: "assets/icons/Chrome Store/128x128.png"
+    background_color: "white"
+    theme_color: "white"
+  windows:
+    generate: true
+    image_path: "assets/icons/Windows/Square310x310Logo.scale-400.png"
+    icon_size: 48 # min:48, max:256, default: 48
+  macos:
+    generate: true
+    image_path: "assets/icons/icon.png"
