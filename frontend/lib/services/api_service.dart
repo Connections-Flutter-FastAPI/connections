@@ -403,6 +403,21 @@ class ApiService {
     return _handleResponse(response);
   }
 
+  Future<List<dynamic>> fetchJoinedCommunities(String? token) async {
+  final response = await http.get(
+    Uri.parse("$baseUrl/communities/joined"),
+    headers: {
+      "Authorization": "Bearer $token",
+    },
+  );
+
+  if (response.statusCode == 200) {
+    return jsonDecode(response.body) as List<dynamic>;
+  } else {
+    throw Exception("Failed to load joined communities");
+  }
+}
+
   Future<Map<String, dynamic>> deleteCommunity(String communityId, String token) async {
     final url = '$baseUrl/communities/$communityId';
     print('Deleting community ID: $communityId');

@@ -20,6 +20,7 @@ class CommunitiesScreen extends StatefulWidget {
 class _CommunitiesScreenState extends State<CommunitiesScreen> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
+  bool _showJoinedOnly = false;
 
   String _searchQuery = '';
   // Store join status locally for optimistic UI. Key: communityId (String), Value: isJoined (bool)
@@ -69,12 +70,11 @@ class _CommunitiesScreenState extends State<CommunitiesScreen> with AutomaticKee
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
     setState(() {
-      // Determine which API call to make based on the selected category
-      if (_selectedCategory == 'trending') {
+      if (_showJoinedOnly) {
+        _loadCommunitiesFuture = apiService.fetchJoinedCommunities(authProvider.token);
+      } else if (_selectedCategory == 'trending') {
         _loadCommunitiesFuture = apiService.fetchTrendingCommunities(authProvider.token);
       } else {
-        // 'all' or specific interest categories use the general fetch endpoint
-        // Backend filtering by interest might be needed, or frontend filtering
         _loadCommunitiesFuture = apiService.fetchCommunities(authProvider.token);
       }
     });
@@ -198,8 +198,8 @@ class _CommunitiesScreenState extends State<CommunitiesScreen> with AutomaticKee
     return Scaffold(
       // Removed AppBar to match design of other main screens
       body: Column(
-        children: [
-
+      children: [
+ 
           // Search Bar
           Padding(
             padding: const EdgeInsets.all(ThemeConstants.mediumPadding),
@@ -221,8 +221,6 @@ class _CommunitiesScreenState extends State<CommunitiesScreen> with AutomaticKee
               style: TextStyle(color: isDark ? Colors.white : Colors.black87),
             ),
           ),
-
-
           // Category tabs
           SizedBox(
             height: 100,
@@ -233,6 +231,7 @@ class _CommunitiesScreenState extends State<CommunitiesScreen> with AutomaticKee
               itemBuilder: (context, index) {
                 final category = _categoryTabs[index];
                 final isSelected = _selectedCategory == category['id'];
+                final isDark = Theme.of(context).brightness == Brightness.dark;
                 return GestureDetector(
                   onTap: () => _selectCategory(category['id'] as String),
                   child: Padding(
@@ -276,13 +275,57 @@ class _CommunitiesScreenState extends State<CommunitiesScreen> with AutomaticKee
               },
             ),
           ),
-          
-          // Sort Options Dropdown
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: ThemeConstants.mediumPadding),
+            padding: const EdgeInsets.symmetric(horizontal: ThemeConstants.mediumPadding, vertical: 12.0),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
+                Row(
+                  children: [
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _showJoinedOnly = !_showJoinedOnly;
+                          _triggerCommunityLoad();
+                        });
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        width: 64,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(99),
+                          gradient: LinearGradient(
+                            colors: _showJoinedOnly
+                                ? [Colors.grey.shade800, Colors.grey.shade900]
+                                : [Colors.grey.shade300, Colors.grey.shade400],
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                          ),
+                        ),
+                        alignment: _showJoinedOnly ? Alignment.centerRight : Alignment.centerLeft,
+                        padding: const EdgeInsets.all(4),
+                        child: Container(
+                          width: 24,
+                          height: 24,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _showJoinedOnly ? 'Joined' : 'All',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: Theme.of(context).textTheme.bodyLarge?.color,
+                      ),
+                    ),
+                  ],
+                ),
                 DropdownButton<String>(
                   value: _selectedSortOption,
                   icon: const Icon(Icons.arrow_drop_down),
@@ -311,7 +354,6 @@ class _CommunitiesScreenState extends State<CommunitiesScreen> with AutomaticKee
               ],
             ),
           ),
-          
           // Community grid
           Expanded(
             child: RefreshIndicator(
@@ -514,36 +556,3 @@ class _CommunitiesScreenState extends State<CommunitiesScreen> with AutomaticKee
     );
   }
 }
-
-          // Container(
-          //   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          //   decoration: BoxDecoration(
-          //     color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
-          //     borderRadius: BorderRadius.circular(30),
-          //     border: Border.all(color: ThemeConstants.primaryColor.withOpacity(0.6)),
-          //   ),
-          //   child: DropdownButtonHideUnderline(
-          //     child: DropdownButton<String>(
-          //       value: _selectedSortOption,
-          //       icon: const Icon(Icons.arrow_drop_down),
-          //       elevation: 16,
-          //       dropdownColor: isDark ? Colors.grey.shade900 : Colors.white,
-          //       style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
-          //       onChanged: (String? newValue) {
-          //         if (newValue != null) _selectSortOption(newValue);
-          //       },
-          //       items: _sortOptions.map<DropdownMenuItem<String>>((sortOption) {
-          //         return DropdownMenuItem<String>(
-          //           value: sortOption['id'] as String,
-          //           child: Row(
-          //             children: [
-          //               Icon(sortOption['icon'] as IconData, size: 18),
-          //               const SizedBox(width: 8),
-          //               Text(sortOption['label'] as String),
-          //             ],
-          //           ),
-          //         );
-          //       }).toList(),
-          //     ),
-          //   ),
-          // ),

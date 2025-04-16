@@ -4,6 +4,8 @@ import psycopg2.extras # For RealDictCursor, though connection factory handles i
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any
 import bcrypt # Import bcrypt here for password check
+from . import models
+from sqlalchemy.orm import Session
 
 # --- User CRUD ---
 
@@ -284,6 +286,14 @@ def join_community_db(cursor: psycopg2.extensions.cursor, user_id: int, communit
     )
     result = cursor.fetchone()
     return result['id'] if result else None
+
+def get_user_joined_communities(db: Session, user_id: int):
+    return (
+        db.query(models.Community)
+        .join(models.community_membership)
+        .filter(models.community_membership.c.user_id == user_id)
+        .all()
+    )
 
 def leave_community_db(cursor: psycopg2.extensions.cursor, user_id: int, community_id: int) -> Optional[int]:
     """Removes a user from a community. Returns deleted ID if successful."""
@@ -595,3 +605,5 @@ def get_chat_messages_db(cursor: psycopg2.extensions.cursor, community_id: Optio
 
     cursor.execute(query, tuple(params))
     return cursor.fetchall()
+
+
